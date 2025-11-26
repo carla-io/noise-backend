@@ -137,7 +137,7 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
             { expiresIn: '1d' }
         );
 
-        const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
+        const verificationLink = `https://noise-backend-t2a8.onrender.com/verify-email?token=${token}`;
 
 
         // Send verification email
