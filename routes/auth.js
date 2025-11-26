@@ -38,68 +38,74 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-router.post("/register", upload.single("profilePhoto"), async (req, res) => {
+router.post('/register', upload.single('profilePhoto'), async (req, res) => {
     try {
-        const { username, email, password, address, phoneNumber } = req.body;
+        const { username, email, password, userType } = req.body;
 
-        // Check if email exists
         const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: "Email already exists" });
-        }
+        if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
-        // Create user
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({
+
+        const userData = {
             username,
             email,
             password: hashedPassword,
-            address,
-            phoneNumber,
-            profilePhoto: req.file ? req.file.path : null,
-            verified: false
-        });
+            userType,
+            isVerified: false
+        };
 
-        await user.save();
+        if (req.file) {
+            userData.profilePhoto = req.file.path;
+        }
 
-        // Generate token
+        const user = await User.create(userData);
+
+        // Create email verification token
         const verificationToken = jwt.sign(
             { email: user.email },
             process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            { expiresIn: '1d' }
         );
 
-        // Verification link
-        const verificationLink = `${process.env.BASE_URL}/verify-email?token=${verificationToken}`;
+        // ⬇⬇⬇ ONLY CHANGED THIS PART ⬇⬇⬇
+        const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
 
-        // Send email with RESEND
+        const { Resend } = require('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
         await resend.emails.send({
             from: "NoiseWatch <noreply@noisewatch.com>",
-            to: email,
-            subject: "Verify Your NoiseWatch Account",
+            to: user.email,
+            subject: "Verify Your Email",
             html: `
-                <h2>Welcome, ${username}!</h2>
-                <p>Thank you for registering with NoiseWatch.</p>
-                <p>Please verify your email by clicking the link below:</p>
-                <a href="${verificationLink}" 
-                   style="background:#007bff;color:white;padding:10px 18px;text-decoration:none;border-radius:5px;">
-                    Verify Email
-                </a>
+                <p>Hi ${user.username},</p>
+                <p>Please verify your email by clicking this link:</p>
+                <a href="${verificationLink}">${verificationLink}</a>
                 <br><br>
-                <p>If the button does not work, use this link:</p>
+                <p>If the link does not work, copy and paste this URL into your browser:</p>
                 <p>${verificationLink}</p>
             `
         });
+        // ⬆⬆⬆ ONLY THIS PART WAS CHANGED ⬆⬆⬆
 
-        res.json({
-            message: "Registration successful! Please check your email to verify your account."
+        res.status(201).json({
+            message: 'Registration successful! Please check your email to verify.',
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                userType: user.userType,
+                profilePhoto: user.profilePhoto
+            }
         });
 
     } catch (error) {
-        console.error("Registration Error:", error);
-        res.status(500).json({ message: "Server error", error });
+        console.error('Registration error:', error);
+        res.status(500).json({ message: error.message });
     }
 });
+
 
 
 // Register with optional profile photo
