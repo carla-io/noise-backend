@@ -7,6 +7,9 @@ const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 
 // Configure Cloudinary
 cloudinary.config({
@@ -34,6 +37,70 @@ const transporter = nodemailer.createTransport({
         pass: process.env.GMAIL_PASS
     }
 });
+
+router.post("/register", upload.single("profilePhoto"), async (req, res) => {
+    try {
+        const { username, email, password, address, phoneNumber } = req.body;
+
+        // Check if email exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: "Email already exists" });
+        }
+
+        // Create user
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({
+            username,
+            email,
+            password: hashedPassword,
+            address,
+            phoneNumber,
+            profilePhoto: req.file ? req.file.path : null,
+            verified: false
+        });
+
+        await user.save();
+
+        // Generate token
+        const verificationToken = jwt.sign(
+            { email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // Verification link
+        const verificationLink = `${process.env.BASE_URL}/verify-email?token=${verificationToken}`;
+
+        // Send email with RESEND
+        await resend.emails.send({
+            from: "NoiseWatch <noreply@noisewatch.com>",
+            to: email,
+            subject: "Verify Your NoiseWatch Account",
+            html: `
+                <h2>Welcome, ${username}!</h2>
+                <p>Thank you for registering with NoiseWatch.</p>
+                <p>Please verify your email by clicking the link below:</p>
+                <a href="${verificationLink}" 
+                   style="background:#007bff;color:white;padding:10px 18px;text-decoration:none;border-radius:5px;">
+                    Verify Email
+                </a>
+                <br><br>
+                <p>If the button does not work, use this link:</p>
+                <p>${verificationLink}</p>
+            `
+        });
+
+        res.json({
+            message: "Registration successful! Please check your email to verify your account."
+        });
+
+    } catch (error) {
+        console.error("Registration Error:", error);
+        res.status(500).json({ message: "Server error", error });
+    }
+});
+
 
 // Register with optional profile photo
 // router.post('/register', upload.single('profilePhoto'), async (req, res) => {
@@ -107,67 +174,66 @@ const transporter = nodemailer.createTransport({
 // });
 
 
-router.post('/register', upload.single('profilePhoto'), async (req, res) => {
-    try {
-        const { username, email, password, userType } = req.body;
+// router.post('/register', upload.single('profilePhoto'), async (req, res) => {
+//     try {
+//         const { username, email, password, userType } = req.body;
 
-        const existingUser = await User.findOne({ email });
-        if (existingUser) return res.status(400).json({ message: 'User already exists' });
+//         const existingUser = await User.findOne({ email });
+//         if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+//         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const userData = {
-            username,
-            email,
-            password: hashedPassword,
-            userType,
-            isVerified: false // ✅ add this
-        };
+//         const userData = {
+//             username,
+//             email,
+//             password: hashedPassword,
+//             userType,
+//             isVerified: false // ✅ add this
+//         };
 
-        if (req.file) {
-            userData.profilePhoto = req.file.path;
-        }
+//         if (req.file) {
+//             userData.profilePhoto = req.file.path;
+//         }
 
-        const user = await User.create(userData);
+//         const user = await User.create(userData);
 
-        // Create email verification token
-        const verificationToken = jwt.sign(
-            { email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
+//         // Create email verification token
+//         const verificationToken = jwt.sign(
+//             { email: user.email },
+//             process.env.JWT_SECRET,
+//             { expiresIn: '1d' }
+//         );
 
-        const verificationLink = `https://noise-backend-t2a8.onrender.com/verify-email?token=${verificationToken}`;
+//         const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
 
 
+//         // Send verification email
+//         const mailOptions = {
+//             from: process.env.GMAIL_USER,
+//             to: user.email,
+//             subject: 'Verify Your Email',
+//             text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
+//         };
 
-        // Send verification email
-        const mailOptions = {
-            from: process.env.GMAIL_USER,
-            to: user.email,
-            subject: 'Verify Your Email',
-            text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
-        };
+//         transporter.sendMail(mailOptions, (error) => {
+//             if (error) console.error('Email send error:', error);
+//         });
 
-        transporter.sendMail(mailOptions, (error) => {
-            if (error) console.error('Email send error:', error);
-        });
-
-        res.status(201).json({
-            message: 'Registration successful! Please check your email to verify.',
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                userType: user.userType,
-                profilePhoto: user.profilePhoto
-            }
-        });
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ message: error.message });
-    }
-});
+//         res.status(201).json({
+//             message: 'Registration successful! Please check your email to verify.',
+//             user: {
+//                 id: user._id,
+//                 username: user.username,
+//                 email: user.email,
+//                 userType: user.userType,
+//                 profilePhoto: user.profilePhoto
+//             }
+//         });
+//     } catch (error) {
+//         console.error('Registration error:', error);
+//         res.status(500).json({ message: error.message });
+//     }
+// });
 
 router.get('/verify-email', async (req, res) => {
     try {
