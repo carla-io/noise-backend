@@ -133,27 +133,27 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
 
         const user = await User.create(userData);
 
-        // Create email verification token
+        // Create verification token
         const verificationToken = jwt.sign(
             { email: user.email },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
 
-        // 🔥 Use deployed URL — IMPORTANT
+        // IMPORTANT: Use deployed backend URL
         const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
 
-
-        // =================== SEND EMAIL WITH RESEND ===================
+        // -------- SEND VERIFICATION EMAIL WITH RESEND --------
         await resend.emails.send({
             from: 'Vet App <no-reply@yourdomain.com>',
             to: user.email,
             subject: 'Verify Your Email',
             html: `
                 <h2>Hello ${user.username},</h2>
-                <p>Please click the link below to verify your email:</p>
+                <p>Please click the button below to verify your email:</p>
                 <a href="${verificationLink}" 
-                    style="padding:10px 20px; background:#4CAF50; color:white; text-decoration:none; border-radius:5px;">
+                    style="padding:10px 20px; background:#4CAF50; color:white;
+                    text-decoration:none; border-radius:5px;">
                     Verify Email
                 </a>
                 <p>This link will expire in 24 hours.</p>
@@ -170,12 +170,14 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
                 profilePhoto: user.profilePhoto
             }
         });
+
     } catch (error) {
         console.error('Registration error:', error);
         res.status(500).json({ message: error.message });
     }
 });
 
+// ========== VERIFY EMAIL ==========
 router.get('/verify-email', async (req, res) => {
     try {
         const token = req.query.token;
@@ -184,36 +186,22 @@ router.get('/verify-email', async (req, res) => {
         const user = await User.findOne({ email: decoded.email });
         if (!user) {
             return res.status(400).send(`
-                <html>
-                  <head>
-                    <title>Email Verification</title>
-                  </head>
-                  <body>
-                    <h1>Invalid or expired link</h1>
-                    <p>Please register again.</p>
-                  </body>
-                </html>
+                <h1>Invalid or expired link</h1>
+                <p>Please register again.</p>
             `);
         }
 
         if (user.isVerified) {
-            return res.status(200).send(`
-                <h1>Your email is already verified</h1>
-            `);
+            return res.status(200).send(`<h1>Your email is already verified.</h1>`);
         }
 
         user.isVerified = true;
         await user.save();
 
         res.status(200).send(`
-            <html>
-              <body>
-                <h1>Email Verified Successfully!</h1>
-                <p>Hi ${user.username}, you can now log in.</p>
-              </body>
-            </html>
+            <h1>Email Verified Successfully!</h1>
+            <p>Hi ${user.username}, you can now log in.</p>
         `);
-
     } catch (err) {
         console.error(err);
         res.status(400).send('<h2>Invalid or expired verification link.</h2>');
