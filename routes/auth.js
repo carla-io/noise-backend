@@ -7,9 +7,6 @@ const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 
 // Configure Cloudinary
 cloudinary.config({
@@ -37,76 +34,6 @@ const transporter = nodemailer.createTransport({
         pass: process.env.GMAIL_PASS
     }
 });
-
-router.post('/register', upload.single('profilePhoto'), async (req, res) => {
-    try {
-        const { username, email, password, userType } = req.body;
-
-        const existingUser = await User.findOne({ email });
-        if (existingUser) return res.status(400).json({ message: 'User already exists' });
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const userData = {
-            username,
-            email,
-            password: hashedPassword,
-            userType,
-            isVerified: false
-        };
-
-        if (req.file) {
-            userData.profilePhoto = req.file.path;
-        }
-
-        const user = await User.create(userData);
-
-        // Create email verification token
-        const verificationToken = jwt.sign(
-            { email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
-
-        // ⬇⬇⬇ ONLY CHANGED THIS PART ⬇⬇⬇
-        const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
-
-        const { Resend } = require('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
-
-        await resend.emails.send({
-            from: "NoiseWatch <noreply@noisewatch.com>",
-            to: user.email,
-            subject: "Verify Your Email",
-            html: `
-                <p>Hi ${user.username},</p>
-                <p>Please verify your email by clicking this link:</p>
-                <a href="${verificationLink}">${verificationLink}</a>
-                <br><br>
-                <p>If the link does not work, copy and paste this URL into your browser:</p>
-                <p>${verificationLink}</p>
-            `
-        });
-        // ⬆⬆⬆ ONLY THIS PART WAS CHANGED ⬆⬆⬆
-
-        res.status(201).json({
-            message: 'Registration successful! Please check your email to verify.',
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                userType: user.userType,
-                profilePhoto: user.profilePhoto
-            }
-        });
-
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ message: error.message });
-    }
-});
-
-
 
 // Register with optional profile photo
 // router.post('/register', upload.single('profilePhoto'), async (req, res) => {
@@ -180,66 +107,66 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
 // });
 
 
-// router.post('/register', upload.single('profilePhoto'), async (req, res) => {
-//     try {
-//         const { username, email, password, userType } = req.body;
+router.post('/register', upload.single('profilePhoto'), async (req, res) => {
+    try {
+        const { username, email, password, userType } = req.body;
 
-//         const existingUser = await User.findOne({ email });
-//         if (existingUser) return res.status(400).json({ message: 'User already exists' });
+        const existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
-//         const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-//         const userData = {
-//             username,
-//             email,
-//             password: hashedPassword,
-//             userType,
-//             isVerified: false // ✅ add this
-//         };
+        const userData = {
+            username,
+            email,
+            password: hashedPassword,
+            userType,
+            isVerified: false // ✅ add this
+        };
 
-//         if (req.file) {
-//             userData.profilePhoto = req.file.path;
-//         }
+        if (req.file) {
+            userData.profilePhoto = req.file.path;
+        }
 
-//         const user = await User.create(userData);
+        const user = await User.create(userData);
 
-//         // Create email verification token
-//         const verificationToken = jwt.sign(
-//             { email: user.email },
-//             process.env.JWT_SECRET,
-//             { expiresIn: '1d' }
-//         );
+        // Create email verification token
+        const verificationToken = jwt.sign(
+            { email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
 
-//         const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
+       const verificationLink = ` https://c34d04de116d.ngrok-free.app/auth/verify-email?token=${verificationToken}`;
 
 
-//         // Send verification email
-//         const mailOptions = {
-//             from: process.env.GMAIL_USER,
-//             to: user.email,
-//             subject: 'Verify Your Email',
-//             text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
-//         };
+        // Send verification email
+        const mailOptions = {
+            from: process.env.GMAIL_USER,
+            to: user.email,
+            subject: 'Verify Your Email',
+            text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
+        };
 
-//         transporter.sendMail(mailOptions, (error) => {
-//             if (error) console.error('Email send error:', error);
-//         });
+        transporter.sendMail(mailOptions, (error) => {
+            if (error) console.error('Email send error:', error);
+        });
 
-//         res.status(201).json({
-//             message: 'Registration successful! Please check your email to verify.',
-//             user: {
-//                 id: user._id,
-//                 username: user.username,
-//                 email: user.email,
-//                 userType: user.userType,
-//                 profilePhoto: user.profilePhoto
-//             }
-//         });
-//     } catch (error) {
-//         console.error('Registration error:', error);
-//         res.status(500).json({ message: error.message });
-//     }
-// });
+        res.status(201).json({
+            message: 'Registration successful! Please check your email to verify.',
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                userType: user.userType,
+                profilePhoto: user.profilePhoto
+            }
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
 
 router.get('/verify-email', async (req, res) => {
     try {
