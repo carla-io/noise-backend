@@ -7,6 +7,9 @@ const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Configure Cloudinary
 cloudinary.config({
@@ -35,84 +38,14 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Register with optional profile photo
-// router.post('/register', upload.single('profilePhoto'), async (req, res) => {
-//     try {
-//         const { name, email, password, userType, licenseNumber } = req.body;
-
-//         // Check if user already exists
-//         const existingUser = await User.findOne({ email });
-//         if (existingUser) {
-//             return res.status(400).json({ message: 'User already exists' });
-//         }
-
-//         // Vet: Check if license number is required and already used
-//         // if (userType === 'vet') {
-//         //     if (!licenseNumber || !/^[0-9]{6,7}$/.test(licenseNumber)) {
-//         //         return res.status(400).json({ message: 'Invalid or missing license number' });
-//         //     }
-
-//         //     const existingLicense = await User.findOne({ licenseNumber });
-//         //     if (existingLicense) {
-//         //         return res.status(400).json({ message: 'License number already registered' });
-//         //     }
-//         // }
-
-//         // Hash password
-//         const hashedPassword = await bcrypt.hash(password, 10);
-
-//         // Create user object
-//         const userData = {
-//             name,
-//             email,
-//             password: hashedPassword,
-//             userType,
-//         };
-
-//         // Add license if vet
-//         // if (userType === 'vet') {
-//         //     userData.licenseNumber = licenseNumber;
-//         // }
-
-//         // Add profile photo if exists
-//         if (req.file) {
-//             userData.profilePhoto = req.file.path;
-//         }
-
-//         const user = await User.create(userData);
-
-//         // Create token
-//         const token = jwt.sign(
-//             { id: user._id, userType: user.userType },
-//             process.env.JWT_SECRET,
-//             { expiresIn: '1d' }
-//         );
-
-//         res.status(201).json({
-//             user: {
-//                 id: user._id,
-//                 name: user.name,
-//                 email: user.email,
-//                 userType: user.userType,
-//                 // licenseNumber: user.licenseNumber,
-//                 profilePhoto: user.profilePhoto,
-//             },
-//             token
-//         });
-
-//     } catch (error) {
-//         console.error('Registration error:', error);
-//         res.status(500).json({ message: error.message });
-//     }
-// });
-
-
 router.post('/register', upload.single('profilePhoto'), async (req, res) => {
     try {
         const { username, email, password, userType } = req.body;
 
         const existingUser = await User.findOne({ email });
-        if (existingUser) return res.status(400).json({ message: 'User already exists' });
+        if (existingUser) {
+            return res.status(400).json({ message: 'User already exists' });
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -121,7 +54,7 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
             email,
             password: hashedPassword,
             userType,
-            isVerified: false // ✅ add this
+            isVerified: false
         };
 
         if (req.file) {
@@ -130,26 +63,27 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
 
         const user = await User.create(userData);
 
-        // Create email verification token
+        // Create verification token
         const verificationToken = jwt.sign(
             { email: user.email },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
 
-       const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
+        // Generate verification link (Render domain)
+        const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
 
-
-        // Send verification email
-        const mailOptions = {
-            from: process.env.GMAIL_USER,
+        // Send email using Resend
+        await resend.emails.send({
+            from: "Your App <noreply@resend.dev>",
             to: user.email,
-            subject: 'Verify Your Email',
-            text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
-        };
-
-        transporter.sendMail(mailOptions, (error) => {
-            if (error) console.error('Email send error:', error);
+            subject: "Verify Your Email",
+            html: `
+                <p>Hi ${user.username},</p>
+                <p>Please verify your email by clicking the link below:</p>
+                <p><a href="${verificationLink}">${verificationLink}</a></p>
+                <p>This link will expire in 24 hours.</p>
+            `
         });
 
         res.status(201).json({
@@ -162,11 +96,74 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
                 profilePhoto: user.profilePhoto
             }
         });
+
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error("Registration error:", error);
         res.status(500).json({ message: error.message });
     }
 });
+
+
+// router.post('/register', upload.single('profilePhoto'), async (req, res) => {
+//     try {
+//         const { username, email, password, userType } = req.body;
+
+//         const existingUser = await User.findOne({ email });
+//         if (existingUser) return res.status(400).json({ message: 'User already exists' });
+
+//         const hashedPassword = await bcrypt.hash(password, 10);
+
+//         const userData = {
+//             username,
+//             email,
+//             password: hashedPassword,
+//             userType,
+//             isVerified: false // ✅ add this
+//         };
+
+//         if (req.file) {
+//             userData.profilePhoto = req.file.path;
+//         }
+
+//         const user = await User.create(userData);
+
+//         // Create email verification token
+//         const verificationToken = jwt.sign(
+//             { email: user.email },
+//             process.env.JWT_SECRET,
+//             { expiresIn: '1d' }
+//         );
+
+//        const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
+
+
+//         // Send verification email
+//         const mailOptions = {
+//             from: process.env.GMAIL_USER,
+//             to: user.email,
+//             subject: 'Verify Your Email',
+//             text: `Hi ${user.username}, please verify your email by clicking this link: ${verificationLink}`
+//         };
+
+//         transporter.sendMail(mailOptions, (error) => {
+//             if (error) console.error('Email send error:', error);
+//         });
+
+//         res.status(201).json({
+//             message: 'Registration successful! Please check your email to verify.',
+//             user: {
+//                 id: user._id,
+//                 username: user.username,
+//                 email: user.email,
+//                 userType: user.userType,
+//                 profilePhoto: user.profilePhoto
+//             }
+//         });
+//     } catch (error) {
+//         console.error('Registration error:', error);
+//         res.status(500).json({ message: error.message });
+//     }
+// });
 
 router.get('/verify-email', async (req, res) => {
     try {
