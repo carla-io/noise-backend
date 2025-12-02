@@ -7,7 +7,6 @@ const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const { Resend } = require('resend'); 
 
 // Configure Cloudinary
 cloudinary.config({
@@ -25,91 +24,20 @@ const storage = new CloudinaryStorage({
         transformation: [{ width: 500, height: 500, crop: 'limit' }]
     }
 });
-
 const upload = multer({ storage });
 
+// Configure NodeMailer with Gmail SMTP
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // Or use SMTP configuration
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS
+        pass: process.env.GMAIL_APP_PASS // 16-char App Password
     }
 });
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-// Register with optional profile photo
-// router.post('/register', upload.single('profilePhoto'), async (req, res) => {
-//     try {
-//         const { name, email, password, userType, licenseNumber } = req.body;
-
-//         // Check if user already exists
-//         const existingUser = await User.findOne({ email });
-//         if (existingUser) {
-//             return res.status(400).json({ message: 'User already exists' });
-//         }
-
-//         // Vet: Check if license number is required and already used
-//         // if (userType === 'vet') {
-//         //     if (!licenseNumber || !/^[0-9]{6,7}$/.test(licenseNumber)) {
-//         //         return res.status(400).json({ message: 'Invalid or missing license number' });
-//         //     }
-
-//         //     const existingLicense = await User.findOne({ licenseNumber });
-//         //     if (existingLicense) {
-//         //         return res.status(400).json({ message: 'License number already registered' });
-//         //     }
-//         // }
-
-//         // Hash password
-//         const hashedPassword = await bcrypt.hash(password, 10);
-
-//         // Create user object
-//         const userData = {
-//             name,
-//             email,
-//             password: hashedPassword,
-//             userType,
-//         };
-
-//         // Add license if vet
-//         // if (userType === 'vet') {
-//         //     userData.licenseNumber = licenseNumber;
-//         // }
-
-//         // Add profile photo if exists
-//         if (req.file) {
-//             userData.profilePhoto = req.file.path;
-//         }
-
-//         const user = await User.create(userData);
-
-//         // Create token
-//         const token = jwt.sign(
-//             { id: user._id, userType: user.userType },
-//             process.env.JWT_SECRET,
-//             { expiresIn: '1d' }
-//         );
-
-//         res.status(201).json({
-//             user: {
-//                 id: user._id,
-//                 name: user.name,
-//                 email: user.email,
-//                 userType: user.userType,
-//                 // licenseNumber: user.licenseNumber,
-//                 profilePhoto: user.profilePhoto,
-//             },
-//             token
-//         });
-
-//     } catch (error) {
-//         console.error('Registration error:', error);
-//         res.status(500).json({ message: error.message });
-//     }
-// });
-
-
+// ========== REGISTER ========== //
 router.post('/register', upload.single('profilePhoto'), async (req, res) => {
     try {
         const { username, email, password, userType } = req.body;
@@ -127,9 +55,7 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
             isVerified: false
         };
 
-        if (req.file) {
-            userData.profilePhoto = req.file.path;
-        }
+        if (req.file) userData.profilePhoto = req.file.path;
 
         const user = await User.create(userData);
 
@@ -140,22 +66,23 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
             { expiresIn: '1d' }
         );
 
-        // IMPORTANT: Use deployed backend URL
-        const verificationLink = `http://172.21.240.237:5000/auth/verify-email?token=${verificationToken}`;
+        // Use deployed backend URL
+        const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
 
-        // -------- SEND VERIFICATION EMAIL WITH RESEND --------
-       const emailResponse = await resend.emails.send({
-    from: 'Acme <onboarding@resend.dev>',
-    to: user.email,
-    subject: 'Verify Your Email',
-    html: `
-        <h2>Hello ${user.username},</h2>
-        <p>Please click the link below to verify your email:</p>
-        <a href="${verificationLink}">Verify Email</a>
-    `
-});
-
-        console.log("RESEND RESPONSE:", emailResponse);
+        // Send verification email via Gmail SMTP
+        await transporter.sendMail({
+            from: process.env.GMAIL_USER,
+            to: user.email,
+            subject: 'Verify Your Email',
+            html: `
+                <h2>Hello ${user.username},</h2>
+                <p>Please click the link below to verify your email:</p>
+                <a href="${verificationLink}" style="padding:10px 20px; background:#4CAF50; color:white; text-decoration:none; border-radius:5px;">
+                    Verify Email
+                </a>
+                <p>This link will expire in 24 hours.</p>
+            `
+        });
 
         res.status(201).json({
             message: 'Registration successful! Please check your email to verify.',
@@ -174,86 +101,49 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
     }
 });
 
-// ========== VERIFY EMAIL ==========
+// ========== VERIFY EMAIL ========== //
 router.get('/verify-email', async (req, res) => {
     try {
         const token = req.query.token;
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         const user = await User.findOne({ email: decoded.email });
-        if (!user) {
-            return res.status(400).send(`
-                <h1>Invalid or expired link</h1>
-                <p>Please register again.</p>
-            `);
-        }
+        if (!user) return res.status(400).send('<h1>Invalid or expired link</h1><p>Please register again.</p>');
 
-        if (user.isVerified) {
-            return res.status(200).send(`<h1>Your email is already verified.</h1>`);
-        }
+        if (user.isVerified) return res.status(200).send('<h1>Your email is already verified.</h1>');
 
         user.isVerified = true;
         await user.save();
 
-        res.status(200).send(`
-            <h1>Email Verified Successfully!</h1>
-            <p>Hi ${user.username}, you can now log in.</p>
-        `);
+        res.status(200).send(`<h1>Email Verified Successfully!</h1><p>Hi ${user.username}, you can now log in.</p>`);
     } catch (err) {
         console.error(err);
         res.status(400).send('<h2>Invalid or expired verification link.</h2>');
     }
 });
 
-
-
+// ========== LOGIN ========== //
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Email and password are required' 
-            });
-        }
+        if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password are required' });
 
         const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Invalid credentials' 
-            });
-        }
+        if (!user) return res.status(400).json({ success: false, message: 'Invalid credentials' });
 
-        // ✅ Check if email is verified
-        if (!user.isVerified) {
-            return res.status(403).json({
-                success: false,
-                message: 'Please verify your email before logging in.'
-            });
-        }
+        if (!user.isVerified) return res.status(403).json({ success: false, message: 'Please verify your email before logging in.' });
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Invalid credentials' 
-            });
-        }
+        if (!isPasswordValid) return res.status(400).json({ success: false, message: 'Invalid credentials' });
 
-        const token = jwt.sign(
-            { id: user._id, userType: user.userType },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
+        const token = jwt.sign({ id: user._id, userType: user.userType }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
         res.status(200).json({
             success: true,
             token,
             user: {
                 id: user._id,
-                _id: user._id,
                 username: user.username,
                 email: user.email,
                 userType: user.userType,
@@ -263,18 +153,16 @@ router.post('/login', async (req, res) => {
 
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ 
-            success: false,
-            message: 'Internal server error' 
-        });
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 
+// ========== TEST EMAIL ========== //
 router.get('/test-email', async (req, res) => {
     try {
         const info = await transporter.sendMail({
             from: process.env.GMAIL_USER,
-            to: 'yourgmail@gmail.com',  // must be your email for testing
+            to: 'yourgmail@gmail.com',  // for testing
             subject: 'Test Email',
             html: '<h1>SMTP works!</h1>'
         });
@@ -285,65 +173,5 @@ router.get('/test-email', async (req, res) => {
         res.send('Error sending email: ' + err.message);
     }
 });
-
-
-
-// router.post('/login', async (req, res) => {
-//     try {
-//         const { email, password } = req.body;
-
-//         // Validate request body
-//         if (!email || !password) {
-//             return res.status(400).json({ 
-//                 success: false,
-//                 message: 'Email and password are required' 
-//             });
-//         }
-
-//         const user = await User.findOne({ email });
-//         if (!user) {
-//             return res.status(400).json({ 
-//                 success: false,
-//                 message: 'Invalid credentials' 
-//             });
-//         }
-
-//         const isPasswordValid = await bcrypt.compare(password, user.password);
-//         if (!isPasswordValid) {
-//             return res.status(400).json({ 
-//                 success: false,
-//                 message: 'Invalid credentials' 
-//             });
-//         }
-
-//         const token = jwt.sign(
-//             { id: user._id, userType: user.userType },
-//             process.env.JWT_SECRET,
-//             { expiresIn: '1d' }
-//         );
-
-//         res.status(200).json({
-//             success: true,
-//             token,
-//             user: {
-//                 id: user._id,
-//                 _id: user._id,
-//                 username: user.username,
-//                 email: user.email,
-//                 userType: user.userType,
-//                 profilePhoto: user.profilePhoto
-//             }
-//         });
-
-//     } catch (error) {
-//         console.error('Login error:', error);
-//         res.status(500).json({ 
-//             success: false,
-//             message: 'Internal server error' 
-//         });
-//     }
-// });
-
-
 
 module.exports = router;
