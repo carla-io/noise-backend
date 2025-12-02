@@ -141,24 +141,21 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
         );
 
         // IMPORTANT: Use deployed backend URL
-        const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
+        const verificationLink = `http://172.21.240.237:5000/auth/verify-email?token=${verificationToken}`;
 
         // -------- SEND VERIFICATION EMAIL WITH RESEND --------
-        await resend.emails.send({
-            from: 'Vet App <no-reply@yourdomain.com>',
-            to: user.email,
-            subject: 'Verify Your Email',
-            html: `
-                <h2>Hello ${user.username},</h2>
-                <p>Please click the button below to verify your email:</p>
-                <a href="${verificationLink}" 
-                    style="padding:10px 20px; background:#4CAF50; color:white;
-                    text-decoration:none; border-radius:5px;">
-                    Verify Email
-                </a>
-                <p>This link will expire in 24 hours.</p>
-            `
-        });
+       const emailResponse = await resend.emails.send({
+    from: 'Acme <onboarding@resend.dev>',
+    to: user.email,
+    subject: 'Verify Your Email',
+    html: `
+        <h2>Hello ${user.username},</h2>
+        <p>Please click the link below to verify your email:</p>
+        <a href="${verificationLink}">Verify Email</a>
+    `
+});
+
+        console.log("RESEND RESPONSE:", emailResponse);
 
         res.status(201).json({
             message: 'Registration successful! Please check your email to verify.',
@@ -272,6 +269,23 @@ router.post('/login', async (req, res) => {
         });
     }
 });
+
+router.get('/test-email', async (req, res) => {
+    try {
+        const info = await transporter.sendMail({
+            from: process.env.GMAIL_USER,
+            to: 'yourgmail@gmail.com',  // must be your email for testing
+            subject: 'Test Email',
+            html: '<h1>SMTP works!</h1>'
+        });
+        console.log(info);
+        res.send('Test email sent! Check Gmail.');
+    } catch (err) {
+        console.error(err);
+        res.send('Error sending email: ' + err.message);
+    }
+});
+
 
 
 // router.post('/login', async (req, res) => {
