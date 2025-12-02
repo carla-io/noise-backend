@@ -137,7 +137,7 @@ router.post('/register', upload.single('profilePhoto'), async (req, res) => {
             { expiresIn: '1d' }
         );
 
-       const verificationLink = ` https://c34d04de116d.ngrok-free.app/auth/verify-email?token=${verificationToken}`;
+       const verificationLink = `http://localhost:5000/auth/verify-email?token=${verificationToken}`;
 
 
         // Send verification email
