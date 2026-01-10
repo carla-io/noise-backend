@@ -225,4 +225,15 @@ router.put("/update-status/:reportId", async (req, res) => {
   }
 });
 
+
+router.get("/total-reports", async (req, res) => {
+  try {
+    const total = await NoiseReport.countDocuments();
+    res.json({ totalReports: total });
+  } catch (error) {
+    console.error("❌ Error counting reports:", error);
+    res.status(500).json({ message: "Error counting reports" });
+  }
+});
+
 module.exports = router;
