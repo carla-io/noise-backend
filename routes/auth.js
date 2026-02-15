@@ -174,4 +174,15 @@ router.get('/test-email', async (req, res) => {
     }
 });
 
+router.post("/save-token", async (req, res) => {
+  const { userId, token } = req.body;
+
+  await User.findByIdAndUpdate(userId, {
+    expoPushToken: token
+  });
+
+  res.json({ message: "Token saved" });
+});
+
+
 module.exports = router;

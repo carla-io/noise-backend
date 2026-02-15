@@ -3,6 +3,9 @@ const multer = require("multer");
 const { v2: cloudinary } = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const NoiseReport = require("../models/Report");
+const User = require("../models/User");
+const sendPushNotification = require("../utils/sendPushNotifs");
+
 
 const router = express.Router();
 
@@ -175,22 +178,61 @@ router.get("/map-data", async (req, res) => {
 // =======================================================================
 // ⭐ GET: SINGLE USER — FETCH OWN REPORTS
 // =======================================================================
-router.get("/get-user-report/:userId", async (req, res) => {
+router.put("/update-status/:reportId", async (req, res) => {
   try {
-    const reports = await NoiseReport.find({ userId: req.params.userId }).sort({
-      createdAt: -1,
+    const { reportId } = req.params;
+    const { status } = req.body;
+
+    if (!["monitoring", "action_required", "resolved"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status value." });
+    }
+
+    const updatedReport = await NoiseReport.findByIdAndUpdate(
+      reportId,
+      { status, updatedAt: Date.now() },
+      { new: true }
+    );
+
+    if (!updatedReport) {
+      return res.status(404).json({ message: "Report not found." });
+    }
+
+    // 👇 FIND OWNER
+    const user = await User.findById(updatedReport.userId);
+
+    // 👇 SEND NOTIFICATION
+    if (user?.expoPushToken) {
+
+      let messageText = "";
+
+      if (status === "monitoring")
+        messageText = "Your noise report is now under monitoring.";
+
+      if (status === "action_required")
+        messageText = "A barangay officer has been assigned to your report.";
+
+      if (status === "resolved")
+        messageText = "Your noise report has been resolved.";
+
+      await sendPushNotification(
+        user.expoPushToken,
+        "Noise Report Update",
+        messageText,
+        { reportId: updatedReport._id }
+      );
+    }
+
+    res.status(200).json({
+      message: "Status updated and notification sent",
+      report: updatedReport,
     });
 
-    res.json({
-      message: "User reports fetched.",
-      count: reports.length,
-      reports,
-    });
-  } catch (err) {
-    console.error("❌ Error fetching user reports:", err);
-    res.status(500).json({ message: "Server error" });
+  } catch (error) {
+    console.error("❌ Error updating status:", error);
+    res.status(500).json({ message: "Error updating status", error: error.message });
   }
 });
+
 
 
 router.put("/update-status/:reportId", async (req, res) => {

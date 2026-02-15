@@ -9,6 +9,10 @@ const UserSchema = new mongoose.Schema({
         enum: ['admin', 'user'],
         default: 'user'
     },
+    expoPushToken: {
+  type: String,
+  default: null
+},
     profilePhoto: { 
         type: String, 
         default: function() {
